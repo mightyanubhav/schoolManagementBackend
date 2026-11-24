@@ -299,7 +299,7 @@ r.post("/payments", role("admin"), validate(paymentSchema), async (req, res, nex
     const totalPaid = existingPayments.reduce((total, payment) => total + payment.paidAmount, 0);
     const dueAmount = Math.max(0, totalFee - totalPaid);
     if (paidAmount > dueAmount) {
-      return res.status(400).json({ error: `Payment exceeds the remaining balance of ₹${dueAmount}` });
+      return res.status(400).json({ error: `Payment exceeds the remaining Baalance of ₹${dueAmount}` });
     }
 
     const payment = await FeePayment.create({

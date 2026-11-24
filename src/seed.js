@@ -249,7 +249,7 @@ async function seedDemo() {
 
   await Fee.create(students.map((student, index) => ({
     student: student._id,
-    title: "Demo tuition balance",
+    title: "Demo tuition Baalance",
     amount: 500,
     dueDate: new Date(currentYear, currentMonth - 1, currentDate.getDate() + 14),
     status: index % 3 === 0 ? "paid" : "pending",

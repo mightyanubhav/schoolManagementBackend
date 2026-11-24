@@ -12,7 +12,7 @@ import { reportRateLimit } from "../middleware/rateLimits.js";
 const r = Router();
 r.use(auth());
 
-const SCHOOL_NAME = "Bal Niketan School";
+const SCHOOL_NAME = "Baal Niketan School";
 const SCHOOL_ADDRESS = "Jonhi, Basua, Aurai";
 
 r.get("/student/:id/pdf", role("admin"), reportRateLimit, async (req, res, next) => {
