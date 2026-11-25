@@ -63,7 +63,7 @@ if (isProd) {
 
   if (/change_me|replace|example/i.test(process.env.JWT_SECRET)) {
     throw new Error(
-      "Please configure a real production JWT_SECRET"
+      "Please configure a real production JWT_SECRET for production"
     );
   }
 
