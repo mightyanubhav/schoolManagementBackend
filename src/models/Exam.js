@@ -13,6 +13,7 @@ const examSchema = new mongoose.Schema(
     term: String,
     class: { type: mongoose.Schema.Types.ObjectId, ref: "Class", required: true },
     subject: { type: mongoose.Schema.Types.ObjectId, ref: "Subject", required: true },
+    students: [{ type: mongoose.Schema.Types.ObjectId, ref: "Student" }],
     date: Date,
     maxMarks: { type: Number, required: true, min: 0, default: 100 },
     passMarks: { type: Number, required: true, min: 0, default: 33 },

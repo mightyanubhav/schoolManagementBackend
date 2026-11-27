@@ -52,6 +52,15 @@ export async function createPrivateDownloadUrl(key, { inline = false } = {}) {
   return getSignedUrl(getClient(), command, { expiresIn: 600 });
 }
 
+export async function downloadPrivateObject(key) {
+  const { bucketName } = getConfig();
+  const response = await getClient().send(new GetObjectCommand({ Bucket: bucketName, Key: key }));
+  return {
+    buffer: Buffer.from(await response.Body.transformToByteArray()),
+    contentType: response.ContentType || "application/octet-stream",
+  };
+}
+
 export async function deletePrivateObject(key) {
   const { bucketName } = getConfig();
   await getClient().send(new DeleteObjectCommand({ Bucket: bucketName, Key: key }));

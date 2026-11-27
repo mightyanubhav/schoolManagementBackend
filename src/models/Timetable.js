@@ -13,6 +13,7 @@ const timetableSchema = new mongoose.Schema(
   {
     class: { type: mongoose.Schema.Types.ObjectId, ref: "Class", required: true, unique: true },
     slots: [slotSchema],
+    reviewDueDate: { type: Date },
   },
   { timestamps: true }
 );

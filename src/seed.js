@@ -203,16 +203,15 @@ async function seedDemo() {
   const structures = students.map((student, index) => ({
     student: student._id,
     admissionFee: 5000,
-    schoolFee: 10000,
+    schoolFee: 3000 + (index % 3) * 250,
     examinationFee: 1000,
     books: 1500,
-    monthlyFee: 3000 + (index % 3) * 250,
   }));
   await FeeStructure.create(structures);
   await FeePayment.create(students.flatMap((student, index) => {
-    const oneTimeTotal = 17500;
+    const oneTimeTotal = 7500;
     const oneTimePaid = index % 4 === 0 ? oneTimeTotal : 5000;
-    const monthlyFee = structures[index].monthlyFee;
+    const monthlyFee = structures[index].schoolFee;
     const monthlyPaid = index % 3 === 0 ? monthlyFee : Math.floor(monthlyFee / 2);
     return [
       {

@@ -18,6 +18,7 @@ const feeStructureSchema = new mongoose.Schema(
     shoesSocks: { type: Number, default: 0, min: 0, max: 1_000_000_000 },
     books: { type: Number, default: 0, min: 0, max: 1_000_000_000 },
     dressFee: { type: Number, default: 0, min: 0, max: 1_000_000_000 },
+    previousDues: { type: Number, default: 0, min: 0, max: 1_000_000_000 },
     monthlyFee: { type: Number, default: 0, min: 0, max: 1_000_000_000 },
   },
   { timestamps: true }

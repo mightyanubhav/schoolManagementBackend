@@ -17,7 +17,6 @@ r.use(auth());
 const feeItems = [
   ["admissionFee", "Admission Fee"],
   ["securityDeposit", "Security Deposit"],
-  ["schoolFee", "School Fee"],
   ["registrationFee", "Registration Fee"],
   ["examinationFee", "Examination Fee"],
   ["computerEducationFee", "Computer Education Fee"],
@@ -30,6 +29,7 @@ const feeItems = [
   ["shoesSocks", "Shoes + Socks"],
   ["books", "Books"],
   ["dressFee", "Dress Fee"],
+  ["previousDues", "Previous Dues"],
 ];
 
 const structureSchema = z.object({
@@ -48,6 +48,7 @@ const structureSchema = z.object({
   shoesSocks: z.coerce.number().nonnegative().max(1_000_000_000).default(0),
   books: z.coerce.number().nonnegative().max(1_000_000_000).default(0),
   dressFee: z.coerce.number().nonnegative().max(1_000_000_000).default(0),
+  previousDues: z.coerce.number().nonnegative().max(1_000_000_000).default(0),
   monthlyFee: z.coerce.number().nonnegative().max(1_000_000_000).default(0),
 });
 
@@ -79,6 +80,10 @@ const feeItemLabels = new Map(feeItems);
 
 function sumItems(items) {
   return items.reduce((total, item) => total + (item.amount || 0), 0);
+}
+
+function recurringSchoolFee(structure) {
+  return structure?.schoolFee || structure?.monthlyFee || 0;
 }
 
 function obligationItems(structure) {
@@ -123,7 +128,7 @@ r.get("/me", role("student"), async (req, res, next) => {
     const admissionDate = student.admissionDate || new Date(academicYear, 3, 1);
     const oneTimeItems = structure ? obligationItems(structure) : [];
     const oneTimeTotal = sumItems(oneTimeItems);
-    const monthlyFee = structure?.monthlyFee || 0;
+    const monthlyFee = recurringSchoolFee(structure);
     const monthlyDues = Array.from({ length: 12 }, (_, index) => {
       const month = (index + 3) % 12 + 1;
       const year = month < 4 ? academicYear + 1 : academicYear;
@@ -152,6 +157,7 @@ r.get("/me", role("student"), async (req, res, next) => {
         oneTimeTotal,
         oneTimePaid,
         oneTimeDue: Math.max(0, oneTimeTotal - oneTimePaid),
+        schoolFee: monthlyFee,
         monthlyFee,
       } : null,
       monthlyDues,
@@ -253,24 +259,18 @@ r.put("/structure/:studentId", role("admin"), validate(structureSchema), async (
     const student = await Student.findById(req.params.studentId);
     if (!student) return res.status(404).json({ error: "Student not found" });
     const payments = await FeePayment.find({ student: req.params.studentId }).select("type month year paidAmount");
-    const oneTimePaid = payments
-      .filter((payment) => payment.type === "one-time")
-      .reduce((total, payment) => total + payment.paidAmount, 0);
-    const nextOneTimeTotal = sumItems(obligationItems(req.body));
-    if (nextOneTimeTotal < oneTimePaid) {
-      return res.status(400).json({ error: "One-time fee total cannot be less than the amount already paid" });
-    }
     const monthlyPaidByPeriod = new Map();
     for (const payment of payments.filter((item) => item.type === "monthly")) {
       const key = `${payment.year}-${payment.month}`;
       monthlyPaidByPeriod.set(key, (monthlyPaidByPeriod.get(key) || 0) + payment.paidAmount);
     }
-    if ([...monthlyPaidByPeriod.values()].some((paid) => req.body.monthlyFee < paid)) {
+    const monthlyFee = req.body.schoolFee;
+    if ([...monthlyPaidByPeriod.values()].some((paid) => monthlyFee < paid)) {
       return res.status(400).json({ error: "Monthly fee cannot be less than the amount already paid for a month" });
     }
     const structure = await FeeStructure.findOneAndUpdate(
       { student: req.params.studentId },
-      { $set: { ...req.body, student: req.params.studentId } },
+      { $set: { ...req.body, monthlyFee, student: req.params.studentId } },
       { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
     );
     res.json(structure);
@@ -289,8 +289,8 @@ r.post("/payments", role("admin"), validate(paymentSchema), async (req, res, nex
 
     const items = type === "one-time"
       ? obligationItems(structure)
-      : [{ name: `Monthly Fee - ${monthNames[month - 1]} ${year}`, amount: structure.monthlyFee || 0 }];
-    const totalFee = type === "one-time" ? sumItems(items) : structure.monthlyFee || 0;
+      : [{ name: `School Fee - ${monthNames[month - 1]} ${year}`, amount: recurringSchoolFee(structure) }];
+    const totalFee = type === "one-time" ? sumItems(items) : recurringSchoolFee(structure);
     if (!totalFee) return res.status(400).json({ error: "The fee amount must be greater than zero" });
 
     const paymentFilter = { student: studentId, type };
@@ -367,7 +367,8 @@ r.get("/report", role("admin"), reportRateLimit, async (req, res, next) => {
         });
       }
 
-      if (!structure.monthlyFee) continue;
+      const monthlyFee = recurringSchoolFee(structure);
+      if (!monthlyFee) continue;
       for (const month of monthNumbers) {
         const year = month < 4 ? academicYear + 1 : academicYear;
         const monthly = paymentStats.get(`${student._id}:monthly:${month}:${year}`);
@@ -377,9 +378,9 @@ r.get("/report", role("admin"), reportRateLimit, async (req, res, next) => {
           type: "monthly",
           month,
           year,
-          totalFee: structure.monthlyFee,
+          totalFee: monthlyFee,
           paidAmount: totalPaid,
-          dueAmount: Math.max(0, structure.monthlyFee - totalPaid),
+          dueAmount: Math.max(0, monthlyFee - totalPaid),
           date: monthly?.date || null,
         });
       }
