@@ -43,6 +43,9 @@ const studentResultQuerySchema = z.object({
   class: objectId.optional(),
   q: z.string().trim().max(100).optional(),
 });
+const admitCardScheduleSchema = z.object({
+  date: z.preprocess((value) => value === "" || value == null ? null : value, z.coerce.date().nullable()),
+});
 
 const marksSchema = z.object({
   marks: z.array(z.object({
@@ -174,18 +177,27 @@ function isExamRosterMember(exam, studentId) {
   return !exam.students?.length || exam.students.some((id) => String(id?._id || id) === String(studentId));
 }
 
-r.get("/admit-cards", role("student"), async (req, res, next) => {
+r.get("/admit-cards", role("admin", "student"), async (req, res, next) => {
   try {
-    const student = await Student.findOne({ user: req.user.id }).select("_id class").lean();
-    if (!student) return res.status(404).json({ error: "Student record not found" });
-    const exams = await Exam.find({ class: student.class })
+    let studentId = null;
+    let classId = req.query.class;
+    if (req.user.role === "student") {
+      const student = await Student.findOne({ user: req.user.id }).select("_id class").lean();
+      if (!student) return res.status(404).json({ error: "Student record not found" });
+      studentId = String(student._id);
+      classId = String(student.class);
+    } else if (!mongoose.isValidObjectId(classId)) {
+      return res.status(400).json({ error: "Select a valid class to view admit cards" });
+    }
+
+    const exams = await Exam.find({ class: classId })
       .populate("class", "name section")
       .populate("subject", "name code")
       .sort({ date: 1, _id: 1 })
       .lean();
     const groups = new Map();
     for (const exam of exams) {
-      if (!isExamRosterMember(exam, student._id)) continue;
+      if (studentId && !isExamRosterMember(exam, studentId)) continue;
       const year = exam.date ? new Date(exam.date).getFullYear() : null;
       const key = examGroupKey(exam);
       const group = groups.get(key) || {
@@ -205,6 +217,7 @@ r.get("/admit-cards", role("student"), async (req, res, next) => {
         name: exam.subject?.name || "Subject",
         code: exam.subject?.code || "",
         date: exam.date,
+        status: exam.status || "draft",
       });
       if (!group.date || (exam.date && new Date(exam.date) < new Date(group.date))) group.date = exam.date;
       groups.set(key, group);
@@ -216,15 +229,25 @@ r.get("/admit-cards", role("student"), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-r.get("/:examId/admit-cards/pdf", role("admin", "teacher", "student"), async (req, res, next) => {
+r.put("/:examId/admit-card-schedule", role("admin"), validate(admitCardScheduleSchema), async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.examId)) return res.status(400).json({ error: "Invalid exam id" });
+    const exam = await Exam.findById(req.params.examId);
+    if (!exam) return res.status(404).json({ error: "Exam not found" });
+    exam.date = req.body.date;
+    await exam.save();
+    res.json({
+      _id: exam._id,
+      date: exam.date,
+    });
+  } catch (e) { next(e); }
+});
+
+r.get("/:examId/admit-cards/pdf", role("admin", "student"), async (req, res, next) => {
   try {
     if (!mongoose.isValidObjectId(req.params.examId)) return res.status(400).json({ error: "Invalid exam id" });
     const baseExam = await Exam.findById(req.params.examId);
     if (!baseExam) return res.status(404).json({ error: "Exam not found" });
-    if (req.user.role === "teacher" && !(await teacherCanAccessExam(req.user.id, baseExam))) {
-      return res.status(403).json({ error: "You can only generate admit cards for your assigned classes and subjects" });
-    }
-
     let selectedStudent = null;
     if (req.user.role === "student") {
       selectedStudent = await Student.findOne({ user: req.user.id })
@@ -233,7 +256,8 @@ r.get("/:examId/admit-cards/pdf", role("admin", "teacher", "student"), async (re
       if (!selectedStudent || String(selectedStudent.class?._id) !== String(baseExam.class)) {
         return res.status(403).json({ error: "You can only download your own admit card" });
       }
-    } else if (req.query.studentId) {
+    } else {
+      if (!req.query.studentId) return res.status(400).json({ error: "Select a student to issue an admit card" });
       if (!mongoose.isValidObjectId(req.query.studentId)) return res.status(400).json({ error: "Invalid student id" });
       selectedStudent = await Student.findById(req.query.studentId)
         .populate("user", "name")
@@ -253,15 +277,7 @@ r.get("/:examId/admit-cards/pdf", role("admin", "teacher", "student"), async (re
       return res.status(403).json({ error: "No exam in this group is assigned to this student" });
     }
 
-    const rosterIds = [...new Set(groupExams.flatMap((exam) => exam.students || []).map(String))];
-    const hasUnrestrictedRoster = groupExams.some((exam) => !exam.students?.length);
-    const students = selectedStudent
-      ? [selectedStudent]
-      : await Student.find(hasUnrestrictedRoster ? { class: baseExam.class } : { _id: { $in: rosterIds } })
-        .populate("user", "name")
-        .populate("class", "name section")
-        .sort({ rollNo: 1, admissionNo: 1 });
-    if (!students.length) return res.status(404).json({ error: "No students are enrolled in this exam group" });
+    const students = [selectedStudent];
 
     const logo = await readFile(SCHOOL_LOGO_PATH);
     const terms = [...new Set(groupExams.map((exam) => exam.term?.trim()).filter(Boolean))];
