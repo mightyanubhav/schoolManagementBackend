@@ -22,7 +22,7 @@ r.use(auth());
 const SCHOOL_NAME = "Baal Niketan School";
 const SCHOOL_ADDRESS = "Jonki, Basua, Aurai, Muzaffarpur 843321";
 const SCHOOL_PHONE = "9263349380";
-const SCHOOL_LOGO_PATH = new URL("../../../client/src/assets/schoolLogo.png", import.meta.url);
+const SCHOOL_LOGO_PATH = new URL("../assets/schoolLogo.png", import.meta.url);
 
 const optionalText = (max) => z.string().trim().max(max).optional().or(z.literal(""));
 const optionalDate = z.preprocess((value) => value === "" ? undefined : value, z.coerce.date().optional());
